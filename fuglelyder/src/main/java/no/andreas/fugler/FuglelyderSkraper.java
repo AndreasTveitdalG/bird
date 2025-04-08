@@ -20,6 +20,8 @@ import org.jsoup.select.Elements;
 public class FuglelyderSkraper {
   private static String WEBSITE = "https://www.fuglelyder.net/";
 
+
+
   private static List<String> downloadBirdIndex() throws IOException {
     String reqString = WEBSITE + "alfabetisk/";
     List<String> birds = new ArrayList<>();
@@ -61,6 +63,14 @@ public class FuglelyderSkraper {
   public static void main(String[] args) throws IOException, InterruptedException, ClassNotFoundException {
     Files.createDirectories(Path.of("birds"));
 
+    final List<String> birdIndex = getBirdIndex();
+
+    final HashMap<String, List<BirdSound>> soundIndex = getSoundIndex(birdIndex);
+
+    downloadAllSounds(soundIndex);
+  }
+
+  private static List<String> getBirdIndex() throws IOException, ClassNotFoundException {
     // Ready a birdIndex
     final List<String> birdIndex;
     final Path birdIndexSave = Path.of("birds", "birdIndex.ser");
@@ -71,7 +81,11 @@ public class FuglelyderSkraper {
       birdIndex.addAll(downloadBirdIndex());
       writeBirdIndex(birdIndexSave, birdIndex);
     }
+    return birdIndex;
+  }
 
+  private static HashMap<String, List<BirdSound>> getSoundIndex(final List<String> birdIndex)
+      throws IOException, ClassNotFoundException {
     // Ready a soundIndex
     final HashMap<String, List<BirdSound>> soundIndex;
     final Path soundIndexSave = Path.of("birds", "soundIndex");
@@ -85,42 +99,30 @@ public class FuglelyderSkraper {
         writeIndexSounds(soundsSave, soundIndex.get(bird));
       }
     }
+    return soundIndex;
+  }
 
+  private static void downloadAllSounds(final HashMap<String, List<BirdSound>> soundIndex)
+      throws IOException, InterruptedException {
+    // Download bird sounds
     final Path birdSoundSaves = Path.of("birds", "sounds");
     Files.createDirectories(birdSoundSaves);
     HttpClient birdSoundClient = HttpClient.newHttpClient();
-    try {
-      for (String bird : soundIndex.keySet()) {
-        try (DirectoryStream<Path> birdSounds = Files.newDirectoryStream(birdSoundSaves, bird + "*.mp3")) {
-          // Read previously downloaded birds
-          for (Path birdSound : birdSounds) {
-            String sound = birdSound.toString().replace(bird, "").replace(".mp3", "");
-            String[] idAndType = sound.split(" ");
-            if (idAndType.length == 2) {
-              Integer id = Integer.valueOf(idAndType[0]);
-              String name = idAndType[1];
-              BirdSound savedSound = new BirdSound(id, name);
-              if (!soundIndex.containsValue(savedSound)) {
-                // TODO: Bird sound index should be updated and verified for this bird as some
-                // appear to be added extra
-              }
-            }
+    for (String bird : soundIndex.keySet()) {
+      List<BirdSound> sounds = soundIndex.get(bird);
+      for (BirdSound sound : sounds) {
+        // TODO: Make the download request concurrent
+        Path birdSoundSave = birdSoundSaves.resolve(bird + sound + ".mp3");
+        if (!Files.exists(birdSoundSave)) {
+          try {
+            String birdSoundURI = WEBSITE + "sounds/" + sound.getId() + ".mp3";
+            HttpRequest birdSoundReq = HttpRequest.newBuilder(new URI(birdSoundURI)).build();
+            birdSoundClient.send(birdSoundReq, HttpResponse.BodyHandlers.ofFile(birdSoundSave));
+          } catch (URISyntaxException e) {
+            System.err.println("was unable to download sounds due to the uri being wrong");
           }
         }
-        // Path birdSoundSave = birdSoundSaves.resolve(bird + sound + ".mp3");
-        // if (Files.exists(birdSoundSave)) {
-        // List<BirdSound> sounds = birdSoundIndex.get(bird);
-        // for (BirdSound sound : sounds) {
-        // String birdSoundURI = birdWebsite + "sounds/" + sound.getId() + ".mp3";
-        // HttpRequest birdSoundReq = HttpRequest.newBuilder(new
-        // URI(birdSoundURI)).build();
-        // birdSoundClient.send(birdSoundReq, HttpResponse.BodyHandlers.ofFile(
-        // birdSoundSaves.resolve(bird + sound + ".mp3")));
-        // System.out.println(bird + ": " + sound);
-        // }
       }
-    } catch (Exception e) {
-      System.out.println("was unable to download sounds due to the uri being wrong");
     }
   }
 
