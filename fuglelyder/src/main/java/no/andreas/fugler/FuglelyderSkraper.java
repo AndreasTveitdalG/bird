@@ -1,8 +1,8 @@
 package no.andreas.fugler;
 
 import java.io.*;
-import java.nio.file.DirectoryStream;
 import java.util.*;
+import java.util.stream.Stream;
 import java.net.URISyntaxException;
 import java.lang.InterruptedException;
 import java.net.URI;
@@ -18,152 +18,229 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
 public class FuglelyderSkraper {
-  private static String WEBSITE = "https://www.fuglelyder.net/";
-
-
-
-  private static List<String> downloadBirdIndex() throws IOException {
-    String reqString = WEBSITE + "alfabetisk/";
-    List<String> birds = new ArrayList<>();
-    Document doc = Jsoup.connect(reqString).get();
-    Elements birdElements = doc.select(".bird-outer div");
-    for (Element bird : birdElements) {
-      birds.addAll(bird.getElementsByTag("a").stream()
-          .map(birdLink -> birdLink.attributes().get("href"))
-          .map(birdName -> birdName.replace("/", ""))
-          .distinct().toList());
-    }
-    return birds;
-  }
-
-  private static List<BirdSound> downloadSound(String bird) throws IOException {
-    String birdLink = WEBSITE + bird;
-    Document birdDoc = Jsoup.connect(birdLink).get();
-    System.out.println(bird);
-    return Objects.requireNonNull(birdDoc.getElementById("soundtypes"))
-        .getElementsByTag("div").stream()
-        .filter(tab -> !tab.hasClass("audioshop"))
-        .filter(tab -> !tab.id().equalsIgnoreCase("soundtypes"))
-        .map(tab -> new BirdSound(Integer.valueOf(
-            tab.id().replace("type", "")),
-            tab.text().replace(" / ", "-")))
-        .toList();
-  }
-
-  private static HashMap<String, List<BirdSound>> downloadSoundIndex(List<String> birdIndex)
-      throws IOException {
-    HashMap<String, List<BirdSound>> birdSoundIndex = new HashMap<>();
-    for (String bird : birdIndex) {
-      birdSoundIndex.put(bird, downloadSound(bird));
-      System.out.println(bird + ": " + birdSoundIndex.get(bird));
-    }
-    return birdSoundIndex;
-  }
-
+  private static final String WEBSITE = "https://www.fuglelyder.net/";
+  private static final Path BIRD_INDEX_SAVE = Path.of("birds", "birdIndex.ser");
+  private static final Path SOUND_INDEX_SAVE = Path.of("birds", "soundIndex");
+  private static final Path IMAGE_INDEX_SAVE = Path.of("birds", "imageIndex");
+  private static final Path SOUND_SAVES = Path.of("birds", "sounds");
+  private static final Path IMAGE_SAVES = Path.of("birds", "images");
+  
   public static void main(String[] args) throws IOException, InterruptedException, ClassNotFoundException {
     Files.createDirectories(Path.of("birds"));
-
-    final List<String> birdIndex = getBirdIndex();
-
-    final HashMap<String, List<BirdSound>> soundIndex = getSoundIndex(birdIndex);
-
-    downloadAllSounds(soundIndex);
+    
+    if (args.length < 0) {
+      System.out.println("Select a command to use. Run without argument or subargument for help.");
+      return;
+    }
+    switch (args[0]) {
+      case "list" -> listCommand(args);
+      case "download" -> downloadCommand(args);
+      case "delete" -> deleteCommand(args);
+      case "update" -> updateCommand(args);
+      default -> {
+        System.out.println("Select a command to use. Run without argument or subargument for help.");
+      }
+    }
   }
-
+  
+  // CLI
+  
+  private static void listCommand(String[] args) throws IOException, ClassNotFoundException {
+    if (args.length < 2) {
+      System.out.println("List the pieces of data that are cached");
+      System.out.println("Availible subcommands are `birds, all-sounds, sounds and images`");
+      return;
+    }
+    switch (args[1]) {
+      case "birds" -> {
+        // List all birds by ID
+        final List<String> birdIndex = getBirdIndex();
+        for (String bird : birdIndex) {
+          System.out.println(bird);
+        }
+      }
+      case "all-sounds" -> {
+        // List all sounds by ID for every bird
+        final List<String> birdIndex = getBirdIndex();
+        final HashMap<String, List<BirdSound>> soundIndex = getSoundIndex(birdIndex);
+        for (String bird : soundIndex.keySet()) {
+          System.out.println(bird);
+          for (BirdSound sound : soundIndex.get(bird)) {
+            System.out.println("\t" + sound);
+          }
+        }
+      }
+      case "sounds" -> {
+        // TODO: extend to take multiple birds at once
+        // List all sounds by ID for one particular bird
+        if (args.length < 3) {
+          System.out.println("List the pieces of data that are cached");
+          System.out.println("Availible subcommands are `birds, all-sounds, sounds and images`");
+          return;
+        }
+        final List<String> birdIndex = getBirdIndex();
+        final HashMap<String, List<BirdSound>> soundIndex = getSoundIndex(birdIndex);
+        if (soundIndex.containsKey(args[2])) {
+          for (BirdSound sound : soundIndex.get(args[2])) {
+            System.out.println(sound);
+          }
+        } else {
+          System.out.println("bird `" + args[2] + "` was not found in the cache");
+        }
+      }
+      case "images" -> {
+        // TODO: Create image API
+        System.err.println("Image API is still in development");
+      }
+      default -> {
+        System.out.println("List the pieces of data that are cached");
+        System.out.println("Availible subcommands are `birds, all-sounds, sounds and images`");
+      }
+    }
+  }
+  
+  private static void downloadCommand(String[] args) throws IOException, InterruptedException, ClassNotFoundException {
+    // TODO: enable the possibility of downloading specific sounds and images
+    if (args.length < 2) {
+      System.out.println("Download sounds or images to the cache");
+      System.out.println("Can be done in batch `all-images and all-sounds` or individually for a bird or a particular image/sound");
+      return;
+    }
+    switch (args[1]) {
+      case "all-sounds" -> {
+        // Download all sounds for all birds
+        final List<String> birdIndex = getBirdIndex();
+        final HashMap<String, List<BirdSound>> soundIndex = getSoundIndex(birdIndex);
+        downloadAllSounds(soundIndex);
+      }
+      case "all-images" -> {
+        // TODO: Create image API
+        System.err.println("Image API is still in development");
+      }
+      default -> {
+        System.out.println("Download sounds or images to the cache");
+        System.out.println("Can be done in batch `all-images and all-sounds` or individually for a bird or a particular image/sound");
+      }
+    }
+  }
+  
+  private static void deleteCommand(String[] args) throws IOException {
+    // add deletion of induvidual sounds and images
+    if (args.length < 2) {
+      System.out.println("Delete the saved content. Delete the entire save or specific content within it*");
+      System.out.println("  *specific content deletion is not availible for the bird index");
+      return;
+    }
+    switch (args[1]) {
+      case "bird-index" -> {
+        if (!Files.isDirectory(BIRD_INDEX_SAVE)) {
+          System.out.println("Bird index should not be a directory");
+        }
+        if (Files.deleteIfExists(BIRD_INDEX_SAVE)) {
+          System.out.println("Bird index has been successfully deleted");
+        }
+      }
+      case "sound-index" -> {
+        try (Stream<Path> files = Files.walk(SOUND_INDEX_SAVE)) {
+          for (Path file : files.toList()) {
+            Files.deleteIfExists(file);
+          }
+        }
+        System.out.println("Sound index has been successfully deleted");
+      }
+      case "image-index" -> {
+        try (Stream<Path> files = Files.walk(IMAGE_INDEX_SAVE)) {
+          for (Path file : files.toList()) {
+            Files.deleteIfExists(file);
+          }
+        }
+      }
+      case "sounds" -> {
+        try (Stream<Path> files = Files.walk(SOUND_SAVES)) {
+          for (Path file : files.toList()) {
+            Files.deleteIfExists(file);
+          }
+        }
+      }
+      case "images" -> {
+        try (Stream<Path> files = Files.walk(IMAGE_SAVES)) {
+          for (Path file : files.toList()) {
+            Files.deleteIfExists(file);
+          }
+        }
+      }
+      default -> {
+        System.out.println("Delete the saved content. Delete the entire save or specific content within it*");
+        System.out.println("  *specific content deletion is not availible for the bird index");
+      }
+    }
+  }
+  
+  private static void updateCommand(String[] args) throws IOException, ClassNotFoundException {
+    // create logic
+    if (args.length < 2) {
+      System.out.println("Update the indexes. Specify which to update. `alls-indexes, bird-index, sound-index or image-index`");
+      return;
+    }
+    switch (args[1]) {
+      case "all-indexes" -> {
+        final List<String> birdIndex = downloadBirdIndex();
+        downloadSoundIndex(birdIndex);
+      }
+      case "bird-index" -> {
+        downloadBirdIndex();
+      }
+      case "sound-index" -> {
+        final List<String> birdIndex = getBirdIndex();
+        downloadSoundIndex(birdIndex);
+      }
+      case "image-index" -> {
+        // TODO: Create image API
+        System.err.println("Image API is still in development");
+      }
+      default -> {
+        System.out.println("Update the indexes. Specify which to update. `alls-indexes, bird-index, sound-index or image-index`");
+      }
+    }
+  }
+  
+  // API
+  
   private static List<String> getBirdIndex() throws IOException, ClassNotFoundException {
     // Ready a birdIndex
     final List<String> birdIndex;
-    final Path birdIndexSave = Path.of("birds", "birdIndex.ser");
-    if (Files.exists(birdIndexSave)) {
-      birdIndex = readBirdIndex(birdIndexSave);
+    if (Files.exists(BIRD_INDEX_SAVE)) {
+      birdIndex = readBirdIndex(BIRD_INDEX_SAVE);
     } else {
       birdIndex = new ArrayList<>();
       birdIndex.addAll(downloadBirdIndex());
-      writeBirdIndex(birdIndexSave, birdIndex);
+      writeBirdIndex(BIRD_INDEX_SAVE, birdIndex);
     }
     return birdIndex;
   }
-
+  
   private static HashMap<String, List<BirdSound>> getSoundIndex(final List<String> birdIndex)
-      throws IOException, ClassNotFoundException {
+  throws IOException, ClassNotFoundException {
     // Ready a soundIndex
     final HashMap<String, List<BirdSound>> soundIndex;
-    final Path soundIndexSave = Path.of("birds", "soundIndex");
-    if (Files.exists(soundIndexSave)) {
-      soundIndex = readSoundIndex(birdIndex, soundIndexSave);
+    if (Files.exists(SOUND_INDEX_SAVE)) {
+      soundIndex = readSoundIndex(birdIndex, SOUND_INDEX_SAVE);
     } else {
-      Files.createDirectories(soundIndexSave);
+      Files.createDirectories(SOUND_INDEX_SAVE);
       soundIndex = downloadSoundIndex(Objects.requireNonNull(birdIndex));
       for (String bird : birdIndex) {
-        Path soundsSave = soundIndexSave.resolve(bird + ".ser");
+        Path soundsSave = SOUND_INDEX_SAVE.resolve(bird + ".ser");
         writeIndexSounds(soundsSave, soundIndex.get(bird));
       }
     }
     return soundIndex;
   }
-
-  private static void downloadAllSounds(final HashMap<String, List<BirdSound>> soundIndex)
-      throws IOException, InterruptedException {
-    // Download bird sounds
-    final Path birdSoundSaves = Path.of("birds", "sounds");
-    Files.createDirectories(birdSoundSaves);
-    HttpClient birdSoundClient = HttpClient.newHttpClient();
-    for (String bird : soundIndex.keySet()) {
-      List<BirdSound> sounds = soundIndex.get(bird);
-      for (BirdSound sound : sounds) {
-        // TODO: Make the download request concurrent
-        Path birdSoundSave = birdSoundSaves.resolve(bird + sound + ".mp3");
-        if (!Files.exists(birdSoundSave)) {
-          try {
-            String birdSoundURI = WEBSITE + "sounds/" + sound.getId() + ".mp3";
-            HttpRequest birdSoundReq = HttpRequest.newBuilder(new URI(birdSoundURI)).build();
-            birdSoundClient.send(birdSoundReq, HttpResponse.BodyHandlers.ofFile(birdSoundSave));
-          } catch (URISyntaxException e) {
-            System.err.println("was unable to download sounds due to the uri being wrong");
-          }
-        }
-      }
-    }
-  }
-
-  private static HashMap<String, List<BirdSound>> readSoundIndex(final List<String> birdIndex, 
-      final Path birdSoundIndexSave) throws IOException, ClassNotFoundException {
-    // TODO: Create sibling method with different parameter signature by the save instead of both the index and save
-    // try (DirectoryStream<Path> stream = Files.newDirectoryStream(birdSoundIndexSave)) {
-    //   for (Path entry: stream) {
-    //       ...
-    //   }
-    // }
-    HashMap<String, List<BirdSound>> birdSoundIndex = new HashMap<>();
-    for (String bird : birdIndex) {
-      Path soundsSave = birdSoundIndexSave.resolve(bird + ".ser");
-      if (Files.exists(soundsSave)) {
-        birdSoundIndex.put(bird, readBirdSounds(soundsSave));
-      } else {
-        List<BirdSound> birdSounds = downloadSound(bird);
-        birdSoundIndex.put(bird, birdSounds);
-        writeIndexSounds(soundsSave, birdSounds);
-      }
-    }
-    return birdSoundIndex;
-  }
-
-  private static void writeBirdIndex(final Path birdIndexSave, final List<String> birdIndex) throws IOException {
-    try (
-        OutputStream stream = Files.newOutputStream(birdIndexSave);
-        ObjectOutputStream out = new ObjectOutputStream(stream);
-    ) {
-      for (String bird : birdIndex) {
-        out.writeObject(bird);
-      }
-    }
-  }
-
+  
   private static List<String> readBirdIndex(final Path birdIndexSave) throws IOException, ClassNotFoundException {
     final List<String> birdIndex = new ArrayList<>();
     try (
-        InputStream stream = Files.newInputStream(birdIndexSave);
-        ObjectInputStream in = new ObjectInputStream(stream);
+    InputStream stream = Files.newInputStream(birdIndexSave);
+    ObjectInputStream in = new ObjectInputStream(stream);
     ) {
       Object object = in.readObject();
       while (Objects.nonNull(object)) {
@@ -181,23 +258,28 @@ public class FuglelyderSkraper {
     }
     return null;
   }
-
-  private static void writeIndexSounds(final Path soundsSave, final List<BirdSound> birdSounds) throws IOException {
-    try (
-        OutputStream stream = Files.newOutputStream(soundsSave);
-        ObjectOutputStream out = new ObjectOutputStream(stream);
-    ) {
-      for (BirdSound birdSound : birdSounds) {
-        out.writeObject(birdSound);
-      }
+ 
+  private static HashMap<String, List<BirdSound>> readSoundIndex(final List<String> birdIndex, 
+  final Path birdSoundIndexSave) throws IOException, ClassNotFoundException {
+    // TODO: Create sibling method with different parameter signature by the save instead of both the index and save
+    // try (DirectoryStream<Path> stream = Files.newDirectoryStream(birdSoundIndexSave)) {
+    //   for (Path entry: stream) {
+    //       ...
+    //   }
+    // }
+    HashMap<String, List<BirdSound>> birdSoundIndex = new HashMap<>();
+    for (String bird : birdIndex) {
+      Path soundsSave = birdSoundIndexSave.resolve(bird + ".ser");
+      birdSoundIndex.put(bird, readSoundIndexEntry(soundsSave));
     }
+    return birdSoundIndex;
   }
-
-  private static List<BirdSound> readBirdSounds(final Path soundsSave) throws IOException, ClassNotFoundException {
+ 
+  private static List<BirdSound> readSoundIndexEntry(final Path soundsSave) throws IOException, ClassNotFoundException {
     final List<BirdSound> sounds = new ArrayList<>();
     try (
-        InputStream stream = Files.newInputStream(soundsSave);
-        ObjectInputStream in = new ObjectInputStream(stream);
+    InputStream stream = Files.newInputStream(soundsSave);
+    ObjectInputStream in = new ObjectInputStream(stream);
     ) {
       // Object should be a BirdSound object
       Object object = in.readObject();
@@ -217,35 +299,86 @@ public class FuglelyderSkraper {
     }
     return null;
   }
-}
-
-class BirdSound implements Serializable {
-  private Integer id;
-  private String type;
-
-  public BirdSound(Integer id, String type) {
-    this.id = id;
-    this.type = type;
+  
+  private static List<String> downloadBirdIndex() throws IOException {
+    String reqString = WEBSITE + "alfabetisk/";
+    List<String> birds = new ArrayList<>();
+    Document doc = Jsoup.connect(reqString).get();
+    Elements birdElements = doc.select(".bird-outer div");
+    for (Element bird : birdElements) {
+      birds.addAll(bird.getElementsByTag("a").stream()
+      .map(birdLink -> birdLink.attributes().get("href"))
+      .map(birdName -> birdName.replace("/", ""))
+      .distinct().toList());
+    }
+    return birds;
+  }
+  
+  private static HashMap<String, List<BirdSound>> downloadSoundIndex(List<String> birdIndex) throws IOException {
+    HashMap<String, List<BirdSound>> birdSoundIndex = new HashMap<>();
+    for (String bird : birdIndex) {
+      birdSoundIndex.put(bird, downloadSoundIndexEntry(bird));
+      System.out.println(bird + ": " + birdSoundIndex.get(bird));
+    }
+    return birdSoundIndex;
+  }
+  
+  private static List<BirdSound> downloadSoundIndexEntry(String bird) throws IOException {
+    String birdLink = WEBSITE + bird;
+    Document birdDoc = Jsoup.connect(birdLink).get();
+    System.out.println(bird);
+    return Objects.requireNonNull(birdDoc.getElementById("soundtypes"))
+      .getElementsByTag("div").stream()
+      .filter(tab -> !tab.hasClass("audioshop"))
+      .filter(tab -> !tab.id().equalsIgnoreCase("soundtypes"))
+      .map(tab -> new BirdSound(Integer.valueOf(
+      tab.id().replace("type", "")),
+      tab.text().replace(" / ", "-")))
+      .toList();
+  }
+  
+  private static void downloadAllSounds(final HashMap<String, List<BirdSound>> soundIndex)
+  throws IOException, InterruptedException {
+    // Download bird sounds
+    Files.createDirectories(SOUND_SAVES);
+    HttpClient birdSoundClient = HttpClient.newHttpClient();
+    for (String bird : soundIndex.keySet()) {
+      List<BirdSound> sounds = soundIndex.get(bird);
+      for (BirdSound sound : sounds) {
+        // TODO: Make the download request concurrent
+        Path birdSoundSave = SOUND_SAVES.resolve(bird + sound + ".mp3");
+        if (!Files.exists(birdSoundSave)) {
+          try {
+            String birdSoundURI = WEBSITE + "sounds/" + sound.getId() + ".mp3";
+            HttpRequest birdSoundReq = HttpRequest.newBuilder(new URI(birdSoundURI)).build();
+            birdSoundClient.send(birdSoundReq, HttpResponse.BodyHandlers.ofFile(birdSoundSave));
+          } catch (URISyntaxException e) {
+            System.err.println("was unable to download sounds due to the uri being wrong");
+          }
+        }
+      }
+    }
+  }
+   
+  private static void writeIndexSounds(final Path soundsSave, final List<BirdSound> birdSounds) throws IOException {
+    try (
+    OutputStream stream = Files.newOutputStream(soundsSave);
+    ObjectOutputStream out = new ObjectOutputStream(stream);
+    ) {
+      for (BirdSound birdSound : birdSounds) {
+        out.writeObject(birdSound);
+      }
+    }
   }
 
-  public Integer getId() {
-    return id;
-  }
-
-  public String getType() {
-    return type;
-  }
-
-  public void setId(Integer id) {
-    this.id = id;
-  }
-
-  public void setType(String type) {
-    this.type = type;
-  }
-
-  @Override
-  public String toString() {
-    return this.id + " " + this.type;
+  private static void writeBirdIndex(final Path birdIndexSave, final List<String> birdIndex) throws IOException {
+    try (
+    OutputStream stream = Files.newOutputStream(birdIndexSave);
+    ObjectOutputStream out = new ObjectOutputStream(stream);
+    ) {
+      for (String bird : birdIndex) {
+        out.writeObject(bird);
+      }
+    }
   }
 }
