@@ -227,7 +227,8 @@ public class FuglelyderSkraper {
       soundIndex = readSoundIndex(birdIndex, SOUND_INDEX_SAVE);
     } else {
       Files.createDirectories(SOUND_INDEX_SAVE);
-      soundIndex = downloadSoundIndex(Objects.requireNonNull(birdIndex));
+      downloadSoundIndex(Objects.requireNonNull(birdIndex));
+      soundIndex = readSoundIndex(birdIndex, BIRD_INDEX_SAVE);
       for (String bird : birdIndex) {
         Path soundsSave = SOUND_INDEX_SAVE.resolve(bird + ".ser");
         writeIndexSounds(soundsSave, soundIndex.get(bird));
@@ -314,27 +315,25 @@ public class FuglelyderSkraper {
     return birds;
   }
   
-  private static HashMap<String, List<BirdSound>> downloadSoundIndex(List<String> birdIndex) throws IOException {
-    HashMap<String, List<BirdSound>> birdSoundIndex = new HashMap<>();
+  private static void downloadSoundIndex(List<String> birdIndex) throws IOException {
     for (String bird : birdIndex) {
-      birdSoundIndex.put(bird, downloadSoundIndexEntry(bird));
-      System.out.println(bird + ": " + birdSoundIndex.get(bird));
+      downloadSoundIndexEntry(bird);
     }
-    return birdSoundIndex;
   }
-  
-  private static List<BirdSound> downloadSoundIndexEntry(String bird) throws IOException {
+
+  private static void downloadSoundIndexEntry(String bird) throws IOException {
     String birdLink = WEBSITE + bird;
     Document birdDoc = Jsoup.connect(birdLink).get();
-    System.out.println(bird);
-    return Objects.requireNonNull(birdDoc.getElementById("soundtypes"))
-      .getElementsByTag("div").stream()
-      .filter(tab -> !tab.hasClass("audioshop"))
-      .filter(tab -> !tab.id().equalsIgnoreCase("soundtypes"))
+    Path soundsSave = SOUND_INDEX_SAVE.resolve(bird + ".ser");
+    writeIndexSounds(soundsSave, Objects.requireNonNull(birdDoc.getElementById("birdmedia"))
+      .getElementsByClass("allsounds").first()
+      .getElementsByTag("span").stream()
+      .filter(tab -> !tab.hasClass("heartspan"))
+      .filter(tab -> !tab.id().equalsIgnoreCase("soundshop"))
       .map(tab -> new BirdSound(Integer.valueOf(
-      tab.id().replace("type", "")),
-      tab.text().replace(" / ", "-")))
-      .toList();
+          tab.id().replace("sound", "")),
+        tab.text().replace(" / ", "-")))
+      .toList());
   }
   
   private static void downloadAllSounds(final HashMap<String, List<BirdSound>> soundIndex)
