@@ -4,31 +4,29 @@ import java.io.Serializable;
 
 class BirdSound implements Serializable {
     private Integer id;
-    private String type;
+    private String slug;
 
-    public BirdSound(Integer id, String type) {
+    public BirdSound(Integer id, String slug) {
         this.id = id;
-        this.type = type;
+        this.slug = slug;
     }
 
     public Integer getId() {
         return id;
     }
-
-    public String getType() {
-        return type;
+    public String getSlug() {
+        return slug;
     }
 
-    public void setId(Integer id) {
+    public void setId(final Integer id) {
         this.id = id;
     }
-
-    public void setType(String type) {
-        this.type = type;
+    public void setSlug(final String type) {
+        this.slug = type;
     }
 
     @Override
     public String toString() {
-        return this.id + " " + this.type;
+        return this.id + " " + this.slug;
     }
 }
